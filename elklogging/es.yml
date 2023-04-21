@@ -1,0 +1,17 @@
+cluster.name: my-es
+node.name: "ip-172-31-37-209"
+path.data: /usr/share/elasticsearch/data
+#path.logs: /var/log/elasticsearch
+bootstrap.memory_lock: false
+network.host: 0.0.0.0
+http.port: 9200
+#集群个节点IP地址，也可以使用els、els.shuaiguoxia.com等名称，需要各节点能够解析
+#discovery.zen.ping.unicast.hosts: ["172.16.30.11", "172.17.77.12"]
+#集群节点数
+#discovery.zen.minimum_master_nodes: 2
+discovery.seed_hosts: ["127.0.0.1", "[::1]"]
+cluster.initial_master_nodes: ["ip-172-31-37-209"]
+#增加参数，使head插件可以访问es
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+http.cors.allow-headers: Authorization,X-Requested-With,Content-Length,Content-Type

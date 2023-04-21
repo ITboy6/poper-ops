@@ -1,0 +1,674 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    rule_files:
+    - /etc/prometheus/rules.yml
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets: ["13.231.142.21:30093"]
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      evaluation_interval: 1m
+    scrape_configs:
+    - job_name: 'kubernetes-node'
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):10250'
+        replacement: '${1}:9100'
+        target_label: __address__
+        action: replace
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+    - job_name: 'kubernetes-node-cadvisor'
+      kubernetes_sd_configs:
+      - role:  node
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+    - job_name: 'kubernetes-apiserver'
+      kubernetes_sd_configs:
+      - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+    - job_name: 'kubernetes-service-endpoints'
+      kubernetes_sd_configs:
+      - role: endpoints
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: (https?)
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_name 
+    - job_name: 'kubernetes-services'
+      kubernetes_sd_configs:
+      - role: service
+      metrics_path: /probe
+      params:
+        module: [http_2xx]
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+        action: keep
+        regex: true
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox-exporter.example.com:9115
+      - source_labels: [__param_target]
+        target_label: instance
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        target_label: kubernetes_name
+    - job_name: 'kubernetes-ingresses'
+      kubernetes_sd_configs:
+      - role: ingress
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_ingress_annotation_prometheus_io_probe]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_ingress_scheme,__address__,__meta_kubernetes_ingress_path]
+        regex: (.+);(.+);(.+)
+        replacement: ${1}://${2}${3}
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox-exporter.example.com:9115
+      - source_labels: [__param_target]
+        target_label: instance
+      - action: labelmap
+        regex: __meta_kubernetes_ingress_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_ingress_name]
+        target_label: kubernetes_name
+        
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: kubernetes_pod_name
+    
+    - job_name: 'kubernetes-schedule'
+      scrape_interval: 5s
+      static_configs:
+      - targets: ['10.10.50.114:10259']
+    
+    - job_name: 'kubernetes-controller-manager'
+      scrape_interval: 5s
+      static_configs:
+      - targets: ['10.10.50.114:10257']
+    
+    - job_name: 'kubernetes-kube-proxy'
+      scrape_interval: 5s
+      static_configs:
+      - targets: ['10.10.50.114:10249']
+    
+    - job_name: 'kubernetes-etcd'
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/k8s-certs/etcd/ca.crt
+        cert_file: /var/run/secrets/kubernetes.io/k8s-certs/etcd/server.crt
+        key_file: /var/run/secrets/kubernetes.io/k8s-certs/etcd/server.key
+      scrape_interval: 5s
+      static_configs:
+      - targets: ['10.10.50.114:2379','10.10.50.115:2379','10.10.50.116:2379']
+  rules.yml: |
+    groups:
+    - name: example
+      rules:
+      - alert: kube-proxy的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-kube-proxy"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过80%"
+      - alert:  kube-proxy的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-kube-proxy"}[1m]) * 100 > 90
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过90%"
+      - alert: scheduler的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-schedule"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过80%"
+      - alert:  scheduler的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-schedule"}[1m]) * 100 > 90
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过90%"
+      - alert: controller-manager的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-controller-manager"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过80%"
+      - alert:  controller-manager的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-controller-manager"}[1m]) * 100 > 0
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过90%"
+      - alert: apiserver的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-apiserver"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过80%"
+      - alert:  apiserver的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-apiserver"}[1m]) * 100 > 90
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过90%"
+      - alert: etcd的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-etcd"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过80%"
+      - alert:  etcd的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{job=~"kubernetes-etcd"}[1m]) * 100 > 90
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}组件的cpu使用率超过90%"
+      - alert: kube-state-metrics的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{k8s_app=~"kube-state-metrics"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.k8s_app}}组件的cpu使用率超过80%"
+          value: "{{ $value }}%"
+          threshold: "80%"      
+      - alert: kube-state-metrics的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{k8s_app=~"kube-state-metrics"}[1m]) * 100 > 0
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.k8s_app}}组件的cpu使用率超过90%"
+          value: "{{ $value }}%"
+          threshold: "90%"      
+      - alert: coredns的cpu使用率大于80%
+        expr: rate(process_cpu_seconds_total{k8s_app=~"kube-dns"}[1m]) * 100 > 80
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.k8s_app}}组件的cpu使用率超过80%"
+          value: "{{ $value }}%"
+          threshold: "80%"      
+      - alert: coredns的cpu使用率大于90%
+        expr: rate(process_cpu_seconds_total{k8s_app=~"kube-dns"}[1m]) * 100 > 90
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.k8s_app}}组件的cpu使用率超过90%"
+          value: "{{ $value }}%"
+          threshold: "90%"      
+      - alert: kube-proxy打开句柄数>600
+        expr: process_open_fds{job=~"kubernetes-kube-proxy"}  > 600
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>600"
+          value: "{{ $value }}"
+      - alert: kube-proxy打开句柄数>1000
+        expr: process_open_fds{job=~"kubernetes-kube-proxy"}  > 1000
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>1000"
+          value: "{{ $value }}"
+      - alert: kubernetes-schedule打开句柄数>600
+        expr: process_open_fds{job=~"kubernetes-schedule"}  > 600
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>600"
+          value: "{{ $value }}"
+      - alert: kubernetes-schedule打开句柄数>1000
+        expr: process_open_fds{job=~"kubernetes-schedule"}  > 1000
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>1000"
+          value: "{{ $value }}"
+      - alert: kubernetes-controller-manager打开句柄数>600
+        expr: process_open_fds{job=~"kubernetes-controller-manager"}  > 600
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>600"
+          value: "{{ $value }}"
+      - alert: kubernetes-controller-manager打开句柄数>1000
+        expr: process_open_fds{job=~"kubernetes-controller-manager"}  > 1000
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>1000"
+          value: "{{ $value }}"
+      - alert: kubernetes-apiserver打开句柄数>600
+        expr: process_open_fds{job=~"kubernetes-apiserver"}  > 600
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>600"
+          value: "{{ $value }}"
+      - alert: kubernetes-apiserver打开句柄数>1000
+        expr: process_open_fds{job=~"kubernetes-apiserver"}  > 1000
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>1000"
+          value: "{{ $value }}"
+      - alert: kubernetes-etcd打开句柄数>600
+        expr: process_open_fds{job=~"kubernetes-etcd"}  > 600
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>600"
+          value: "{{ $value }}"
+      - alert: kubernetes-etcd打开句柄数>1000
+        expr: process_open_fds{job=~"kubernetes-etcd"}  > 1000
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}打开句柄数>1000"
+          value: "{{ $value }}"
+      - alert: coredns
+        expr: process_open_fds{k8s_app=~"kube-dns"}  > 600
+        for: 2s
+        labels:
+          severity: warnning 
+        annotations:
+          description: "插件{{$labels.k8s_app}}({{$labels.instance}}): 打开句柄数超过600"
+          value: "{{ $value }}"
+      - alert: coredns
+        expr: process_open_fds{k8s_app=~"kube-dns"}  > 1000
+        for: 2s
+        labels:
+          severity: critical
+        annotations:
+          description: "插件{{$labels.k8s_app}}({{$labels.instance}}): 打开句柄数超过1000"
+          value: "{{ $value }}"
+      - alert: kube-proxy
+        expr: process_virtual_memory_bytes{job=~"kubernetes-kube-proxy"}  > 2000000000
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 使用虚拟内存超过2G"
+          value: "{{ $value }}"
+      - alert: scheduler
+        expr: process_virtual_memory_bytes{job=~"kubernetes-schedule"}  > 2000000000
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 使用虚拟内存超过2G"
+          value: "{{ $value }}"
+      - alert: kubernetes-controller-manager
+        expr: process_virtual_memory_bytes{job=~"kubernetes-controller-manager"}  > 2000000000
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 使用虚拟内存超过2G"
+          value: "{{ $value }}"
+      - alert: kubernetes-apiserver
+        expr: process_virtual_memory_bytes{job=~"kubernetes-apiserver"}  > 2000000000
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 使用虚拟内存超过2G"
+          value: "{{ $value }}"
+      - alert: kubernetes-etcd
+        expr: process_virtual_memory_bytes{job=~"kubernetes-etcd"}  > 2000000000
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 使用虚拟内存超过2G"
+          value: "{{ $value }}"
+      - alert: kube-dns
+        expr: process_virtual_memory_bytes{k8s_app=~"kube-dns"}  > 2000000000
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "插件{{$labels.k8s_app}}({{$labels.instance}}): 使用虚拟内存超过2G"
+          value: "{{ $value }}"
+      - alert: HttpRequestsAvg
+        expr: sum(rate(rest_client_requests_total{job=~"kubernetes-kube-proxy|kubernetes-kubelet|kubernetes-schedule|kubernetes-control-manager|kubernetes-apiservers"}[1m]))  > 1000
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): TPS超过1000"
+          value: "{{ $value }}"
+          threshold: "1000"   
+      - alert: Pod_restarts
+        expr: kube_pod_container_status_restarts_total{namespace=~"kube-system|default|monitoring"} > 0
+        for: 2s
+        labels:
+          severity: warnning
+        annotations:
+          description: "在{{$labels.namespace}}名称空间下发现{{$labels.pod}}这个pod下的容器{{$labels.container}}被重启,这个监控指标是由{{$labels.instance}}采集的"
+          value: "{{ $value }}"
+          threshold: "0"
+      - alert: Pod_waiting
+        expr: kube_pod_container_status_waiting_reason{namespace=~"kube-system|default"} == 1
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "空间{{$labels.namespace}}({{$labels.instance}}): 发现{{$labels.pod}}下的{{$labels.container}}启动异常等待中"
+          value: "{{ $value }}"
+          threshold: "1"   
+      - alert: Pod_terminated
+        expr: kube_pod_container_status_terminated_reason{namespace=~"kube-system|default|monitoring"} == 1
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "空间{{$labels.namespace}}({{$labels.instance}}): 发现{{$labels.pod}}下的{{$labels.container}}被删除"
+          value: "{{ $value }}"
+          threshold: "1"
+      - alert: Etcd_leader
+        expr: etcd_server_has_leader{job="kubernetes-etcd"} == 0
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 当前没有leader"
+          value: "{{ $value }}"
+          threshold: "0"
+      - alert: Etcd_leader_changes
+        expr: rate(etcd_server_leader_changes_seen_total{job="kubernetes-etcd"}[1m]) > 0
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 当前leader已发生改变"
+          value: "{{ $value }}"
+          threshold: "0"
+      - alert: Etcd_failed
+        expr: rate(etcd_server_proposals_failed_total{job="kubernetes-etcd"}[1m]) > 0
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}}): 服务失败"
+          value: "{{ $value }}"
+          threshold: "0"
+      - alert: Etcd_db_total_size
+        expr: etcd_debugging_mvcc_db_total_size_in_bytes{job="kubernetes-etcd"} > 10000000000
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "组件{{$labels.job}}({{$labels.instance}})：db空间超过10G"
+          value: "{{ $value }}"
+          threshold: "10G"
+      - alert: Endpoint_ready
+        expr: kube_endpoint_address_not_ready{namespace=~"kube-system|default"} == 1
+        for: 2s
+        labels:
+          team: admin
+        annotations:
+          description: "空间{{$labels.namespace}}({{$labels.instance}}): 发现{{$labels.endpoint}}不可用"
+          value: "{{ $value }}"
+          threshold: "1"
+    - name: Node_exporter Down
+      rules:
+      - alert: Node实例已宕机
+        expr: up == 0
+        for: 15s
+        labels:
+          severity: Emergency
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "Node_exporter客户端已停止运行超过15s"
+    - name: Memory Usage High
+      rules:
+      - alert: 物理节点-内存使用率过高
+        expr: 100 - (node_memory_Buffers_bytes + node_memory_Cached_bytes + node_memory_MemFree_bytes) / node_memory_MemTotal_bytes * 100 > 90
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "内存使用率 > 90%，当前内存使用率：{{ $value }}"
+    - name: Cpu Load 1
+      rules:
+      - alert: 物理节点-CPU(1分钟负载)
+        expr: node_load1 > 9
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "CPU负载(1分钟) > 9，前CPU负载(1分钟)：{{ $value }}"
+    - name: Cpu Load 5
+      rules:
+      - alert: 物理节点-CPU(5分钟负载)
+        expr: node_load5 > 10
+        for: 3m
+        labels:     
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "CPU负载(5分钟) > 10，当前CPU负载(5分钟)：{{ $value }}"
+    - name: Cpu Load 15
+      rules:
+      - alert: 物理节点-CPU(15分钟负载)
+        expr: node_load15 > 11
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "CPU负载(15分钟) > 11，当前CPU负载(15分钟)：{{ $value }}"
+    - name: Cpu Idle High
+      rules:            
+      - alert: 物理节点-CPU使用率过高
+        expr: 100 - (avg by(job,instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 3m
+        labels:     
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "CPU使用率 > 90%，当前CPU使用率：{{ $value }}"        
+    - name: Root Disk Space 
+      rules:
+      - alert: 物理节点-根分区使用率
+        expr: (node_filesystem_size_bytes {mountpoint ="/"} - node_filesystem_free_bytes {mountpoint ="/"}) / node_filesystem_size_bytes {mountpoint ="/"} * 100 > 90
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "根分区使用率 > 90%，当前根分区使用率：{{ $value }}"
+    - name: opt Disk Space 
+      rules:
+      - alert: 物理节点-opt分区使用率
+        expr: (node_filesystem_size_bytes {mountpoint ="/opt"} - node_filesystem_free_bytes {mountpoint ="/opt"}) / node_filesystem_size_bytes {mountpoint ="/opt"} * 100 > 90
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "/opt分区使用率 > 90%，当前/opt分区使用率：{{ $value }}"
+    - name: SWAP Usage Space 
+      rules:
+      - alert: 物理节点-Swap分区使用率
+        expr: (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 > 90
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "Swap分区使用率 > 90%，当前Swap分区使用率：{{ $value }}"
+    - name: Unusual Disk Read Rate
+      rules:
+      - alert: 物理节点-磁盘I/O读速率
+        expr: sum by (job,instance) (irate(node_disk_read_bytes_total[2m])) / 1024 / 1024 > 200
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "磁盘I/O读速率 > 200 MB/s，当前磁盘I/O读速率：{{ $value }}"
+    - name: Unusual Disk Write Rate  
+      rules:
+      - alert: 物理节点-磁盘I/O写速率
+        expr: sum by (job,instance) (irate(node_disk_written_bytes_total[2m])) / 1024 / 1024 > 200
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "磁盘I/O写速率 > 200 MB/s，当前磁盘I/O读速率：{{ $value }}"
+    - name: UnusualNetworkThroughputOut
+      rules:
+      - alert: 物理节点-网络流出带宽
+        expr: sum by (job,instance) (irate(node_network_transmit_bytes_total[2m])) / 1024 / 1024 > 200
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "网络流出带宽 > 200 MB/s，当前网络流出带宽{{ $value }}"
+    - name: TCP_Established_High
+      rules:
+      - alert: 物理节点-TCP连接数
+        expr: node_netstat_Tcp_CurrEstab > 5000
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "TCP连接数 > 5000，当前TCP连接数：[{{ $value }}]"
+    - name: TCP_TIME_WAIT
+      rules:
+      - alert: 物理节点-等待关闭的TCP连接数
+        expr: node_sockstat_TCP_tw > 5000
+        for: 3m
+        labels:      
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "等待关闭的TCP连接数 > 5000，当前等待关闭的TCP连接数：[{{ $value }}]"

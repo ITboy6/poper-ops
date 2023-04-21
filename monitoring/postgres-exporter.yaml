@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-exporter-secret
+  namespace: monitoring
+type: Opaque
+stringData:
+  username: "lghznxpvqcxpvi"
+  password: "c0a0715189d69952690567be4817f58c07d009325924d09c2a5e589bdf529912"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-exporter-configmap
+  namespace: monitoring
+data:
+  queries.yaml: |
+    pg_postmaster:
+      query: "SELECT pg_postmaster_start_time as start_time_seconds from pg_postmaster_start_time()"
+      master: true
+      metrics:
+        - start_time_seconds:
+            usage: "GAUGE"
+            description: "Time at which postmaster started"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: postgres-exporter
+  name: postgres-exporter
+  namespace: monitoring
+spec:
+  ports:
+  - name: http-metirc
+    protocol: TCP
+    port: 9187
+    targetPort: 9187
+    nodePort: 31789
+  selector:
+    app: postgres
+    app.kubernetes.io/name: postgresql
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: monitoring
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+      app.kubernetes.io/name: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgresql
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: wrouesnel/postgres_exporter:latest
+          args:
+            - "--web.listen-address=:9187"
+            - "--extend.query-path=/etc/config/queries.yaml"
+            - "--log.level=debug"
+          env:
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-exporter-secret
+                  key: username
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-exporter-secret
+                  key: password
+                    #- name: DATA_SOURCE_URI
+            - name: DATA_SOURCE_NAME
+              value: "postgres://lghznxpvqcxpvi:c0a0715189d69952690567be4817f58c07d009325924d09c2a5e589bdf529912@ec2-52-21-61-131.compute-1.amazonaws.com:5432/ddck5h89bvf8uc"
+                #value: "ec2-34-236-103-63.compute-1.amazonaws.com:5432/d5m720c4ts6ihq?sslmode=disable"
+          ports:
+            - name: http-metrics
+              containerPort: 9187
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: postgres-exporter-configmap

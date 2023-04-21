@@ -1,0 +1,56 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: alertmanager
+  namespace: monitoring
+data:
+  alertmanager.yml: |                                 # altermanager配置文件
+    global:                            
+      resolve_timeout: 5m                            
+      smtp_smarthost: 'smtp.qq.com:465'             # 发送者的SMTP服务器
+      smtp_from: '2859034492@qq.com'                 # 发送者的邮箱
+      smtp_auth_username: '2859034492@qq.com'        # 发送者的邮箱用户名
+      smtp_hello: '@qq.com'                # 发送者授权密码
+      smtp_auth_password: 'ipunnkdhicpcdehd'                # 发送者授权密码
+      smtp_require_tls: false
+    templates:
+    - '/etc/alertmanager/email.tmpl'
+    route:                                            # 配置告警分发策略
+      group_by: ['alertname']                         # 采用哪个标签作为分组依据
+      group_wait: 10s                                 # 组告警等待时间（10s内的同组告警一起发送）
+      group_interval: 10s                             # 两组告警的间隔时间
+      repeat_interval: 10m                            # 重复告警的间隔时间
+      receiver: email                                 # 接收者配置
+    receivers:
+    - name: 'email'                                   # 接收者名称（与上面对应）
+      email_configs:                                  # 接收邮箱配置
+      - to: 'bjyutang@gmail.com'                  # 接收邮箱（填要接收告警的邮箱）
+        headers: { Subject: "Prometheus [Warning] 报警邮件" }
+        html: '{{ template "email.html" . }}'
+        send_resolved: true                           # 是否通知已解决的告警
+  email.tmpl: |           # 告警模版
+    {{ define "email.html" }}
+    {{- if gt (len .Alerts.Firing) 0 -}}
+    {{ range .Alerts }}
+    告警程序：Prometheus_Alertmanager <br>
+    告警级别：{{ .Labels.severity }} <br> 
+    告警状态：{{ .Status }} <br>
+    告警类型：{{ .Labels.alertname }} <br>
+    告警主机：{{ .Labels.instance }} <br>
+    告警详情：{{ .Annotations.description }} <br>
+    触发时间：{{ (.StartsAt.Add 28800e9).Format "2006-01-02 15:04:05" }} <br>
+    {{ end }}{{ end -}}
+     
+    {{- if gt (len .Alerts.Resolved) 0 -}}
+    {{ range .Alerts }}
+    告警程序：Prometheus_Alertmanager <br>
+    告警级别：{{ .Labels.severity }} <br>
+    告警状态：{{ .Status }} <br>
+    告警类型：{{ .Labels.alertname }} <br> 
+    告警主机：{{ .Labels.instance }} <br>
+    告警详情：{{ .Annotations.description }} <br>
+    触发时间：{{ (.StartsAt.Add 28800e9).Format "2006-01-02 15:04:05" }} <br>
+    恢复时间：{{ (.EndsAt.Add 28800e9).Format "2006-01-02 15:04:05" }} <br>
+    {{ end }}{{ end -}}
+     
+    {{- end }}

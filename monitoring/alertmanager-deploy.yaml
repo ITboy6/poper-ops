@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: alertmanager 
+    kubernetes.io/cluster-service: 'true'
+  name: alertmanager
+  namespace: monitoring
+spec:
+  ports:
+  - name: alertmanager
+    nodePort: 30093
+    port: 9093
+    protocol: TCP
+    targetPort: 9093
+  selector:
+    app: alertmanager
+  sessionAffinity: None
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+      component: server
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        component: server
+    spec:
+      nodeName: ip-172-31-37-209
+      serviceAccountName: monitoring                                 # 指定sa，使容器有权限获取数据
+      containers:
+      - name: alertmanager                                        # 容器名称
+        image: bitnami/alertmanager:0.24.0                        # 镜像名称
+        imagePullPolicy: IfNotPresent                             # 镜像拉取策略
+        args:                                                     # 容器启动时执行的命令
+        - "--config.file=/etc/alertmanager/alertmanager.yml"
+        - "--log.level=debug"
+        ports:                                                    # 容器暴露的端口
+        - containerPort: 9093
+          protocol: TCP                                           # 协议
+          name: alertmanager
+        volumeMounts:                                             # 容器挂载的数据卷
+        - mountPath: /etc/alertmanager                            # 要挂载到哪里
+          name: alertmanager-config                               # 挂载谁（与下面定义的volume对应）
+        - mountPath: /alertmanager/
+          name: alertmanager-storage-volume
+        - name: localtime
+          mountPath: /etc/localtime
+      volumes:                                                    # 数据卷定义
+        - name: alertmanager-config                               # 名称
+          configMap:                                              # 从configmap获取数据
+            name: alertmanager                                    # configmap的名称
+        - name: alertmanager-storage-volume
+          hostPath:
+            path: /data/alertmanager
+            type: Directory
+        - name: localtime
+          hostPath:
+            path: /usr/share/zoneinfo/Asia/Shanghai

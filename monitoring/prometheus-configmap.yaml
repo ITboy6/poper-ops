@@ -1,0 +1,164 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  rules.yml: |
+    groups:
+    - name: PostgreSQL
+      rules:
+      - alert: PostgreSQL load时间过高
+        expr: avg by (node_name,host_ip,node,ip,instance) (node_load5{node=~".*"}) / count by(node_name,host_ip,node,ip,instance) (node_cpu_seconds_total{mode="idle"}) > 0.8
+        for: 30s
+        labels:
+          severity: warnning
+        annotations:
+          description: "{{$labels.instance}}的{{$labels.job}}的load连续5分钟大于0.8"
+    - name: Redis
+      rules:
+      - alert: redis内存使用率过高
+        expr: redis_mem_used_bytes / redis_mem_total_bytes > 0.7
+        for: 30s
+        labels:
+          severity: Warning
+        annotations:
+          summary: "{{ $labels.job }}"
+          address: "{{ $labels.instance }}"
+          description: "内存使用率 > 70%，当前内存使用率：{{ $value }}"
+            #- alert: Redis内存使用过高
+            #  annotations:
+            #    description: Redis实例当前内存使用率是{{ $value }}，可用内存小于30%告警!
+            #    summary: Redis实例内存使用率过高
+            #      #expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 70
+            #expr: rate(process_cpu_seconds_total{job=~"redis"}[1m]) * 100 > 1
+            #for: 1m
+            #labels:
+            #  severity: critical
+  prometheus.yml: |
+    rule_files:
+    - /etc/prometheus/rules.yml
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets: ["3.113.9.239:30093"]
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      evaluation_interval: 1m
+    scrape_configs:
+    - job_name: 'kubernetes-node'
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):10250'
+        replacement: '${1}:9100'
+        target_label: __address__
+        action: replace
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: kubernetes_pod_name
+    - job_name: 'kubernetes-apiserver'
+      kubernetes_sd_configs:
+      - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+    - job_name: 'kubernetes-service-endpoints'
+      kubernetes_sd_configs:
+      - role: endpoints
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: (https?)
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_name 
+    - job_name: 'kubernetes-services'
+      kubernetes_sd_configs:
+      - role: service
+      metrics_path: /probe
+      params:
+        module: [http_2xx]
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+        action: keep
+        regex: true
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox-exporter.example.com:9115
+      - source_labels: [__param_target]
+        target_label: instance
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        target_label: kubernetes_name
+
+    - job_name: 'k3s-server'
+      scrape_interval: 5s
+      static_configs:
+      - targets: ['18.183.172.231:6443']
+
+    - job_name: 'redis'
+      static_configs:
+        - targets: ['redis-exporter.monitoring.svc.cluster.local:9121']
+
+    - job_name: 'postgres'
+      static_configs:
+        - targets: ['postgres-exporter.monitoring.svc.cluster.local:9187']

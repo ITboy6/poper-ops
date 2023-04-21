@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: filebeat
+  name: filebeat
+  namespace: elk
+spec:
+  selector:
+    matchLabels:
+      app: filebeat
+  template:
+    metadata:
+      labels:
+        app: filebeat
+    spec:
+      imagePullSecrets:
+      - name: registry-pull-secret
+      containers:
+      - image: elastic/filebeat:7.17.2
+        name: filebeat
+        volumeMounts:
+        - name: filebeat-config
+          mountPath: /etc/filebeat.yml
+          subPath: filebeat.yml
+        - name: k8s-system-logs
+          mountPath: /messages
+        args: [
+          "-c", "/etc/filebeat.yml",
+          "-e",
+        ]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+        securityContext:
+          runAsUser: 0
+        env:
+        - name: TZ
+          value: "CST-8"
+      volumes:
+      - name: filebeat-config
+        configMap:
+          name: filebeat-config
+      - name: k8s-system-logs
+        hostPath:
+          path: /var/log/messages
+          type: File

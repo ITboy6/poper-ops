@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec: 
+  type: NodePort
+  ports:
+  - port: 9090
+    targetPort: 9090
+    nodePort: 30090
+    protocol: TCP
+  selector:
+    app: prometheus
+    component: server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-server
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+      component: server
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        component: server
+      annotations:
+        prometheus.io/scrape: 'false'                             # 该容器不会被prometheus发现并监控，其他pod可通过添加该注解（值为true）以服务发现的方式自动被prometheus监控到。
+    spec:
+      nodeName: ip-172-31-37-209
+      serviceAccountName: monitoring                                 # 指定sa，使容器有权限获取数据
+      containers:
+      - name: prometheus                                          # 容器名称
+        image: prom/prometheus:v2.27.1                            # 镜像名称
+        imagePullPolicy: IfNotPresent                             # 镜像拉取策略
+        command:                                                  # 容器启动时执行的命令
+          - prometheus
+          - --config.file=/etc/prometheus/prometheus.yml
+          - --storage.tsdb.path=/prometheus                       # 旧数据存储目录
+          - --storage.tsdb.retention=720h                         # 旧数据保留时间
+          - --web.enable-lifecycle                                # 开启热加载
+        ports:                                                    # 容器暴露的端口
+        - containerPort: 9090
+          protocol: TCP                                           # 协议
+        volumeMounts:                                             # 容器挂载的数据卷
+        - mountPath: /etc/prometheus                              # 要挂载到哪里
+          name: prometheus-config                                 # 挂载谁（与下面定义的volume对应）
+        - mountPath: /prometheus/
+          name: prometheus-storage-volume
+      volumes:                                                    # 数据卷定义
+        - name: prometheus-config                                 # 名称
+          configMap:                                              # 从configmap获取数据
+            name: prometheus-config                               # configmap的名称
+        - name: prometheus-storage-volume
+          hostPath:
+            path: /data/prometheus
+            type: Directory

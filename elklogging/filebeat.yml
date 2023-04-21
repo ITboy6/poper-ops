@@ -1,0 +1,19 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /messages
+  fields:
+    app: k8s
+    type: module
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+setup.template.settings:
+  index.number_of_shards: 3
+setup.kibana:
+output.logstash:
+  hosts: ["logstash-0.logstash.kube-system:5044"]
+processors:
+  - add_host_metadata:
+  - add_cloud_metadata:

@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: logstash
+  name: logstash
+  namespace: elk
+spec:
+  ports:
+  - name: logstsh
+    port: 5044
+    protocol: TCP
+    targetPort: 9600
+  clusterIP: None
+  selector:
+    app: logstash
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: logstash
+  name: logstash-nodeport-svc
+  namespace: elk
+spec:
+  ports:
+  - name: 5044a
+    port: 5044
+    protocol: TCP
+    targetPort: 9600
+    #nodePort: 9200
+  selector:
+    app: logstash
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: logstash
+  name: logstash
+  namespace: elk
+spec:
+  serviceName: "logstash"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      imagePullSecrets:
+      - name: registry-pull-secret
+      containers:
+      - image: logstash:7.17.2
+        name: logstash
+          #resources:
+          #  requests:
+          #    memory: "800Mi"
+          #    cpu: "600m"
+          #  limits:
+          #    memory: "800Mi"
+          #    cpu: "600m"
+        volumeMounts:
+        - name: logstash-yml-config
+          mountPath: /usr/share/logstash/config/logstash.yml
+          subPath: logstash.yml
+        - name: logstash-config
+          mountPath: /usr/share/logstash/pipeline/logstash.conf
+          subPath: logstash.conf
+        env:
+        - name: TZ
+          value: Asia/Shanghai
+      volumes:
+      - name: logstash-yml-config
+        configMap:
+          name: logstash-yml-config
+      - name: logstash-config
+        configMap:
+          name: logstash-config
+      #nodeSelector:
+      # kubernetes.io/hostname: 172.16.30.1

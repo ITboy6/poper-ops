@@ -1,0 +1,4 @@
+server.port: 5601
+server.host: "0.0.0.0"
+elasticsearch.hosts: "http://18.183.172.231:9200"
+kibana.index: ".kibana"

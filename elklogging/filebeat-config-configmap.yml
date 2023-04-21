@@ -1,0 +1,27 @@
+apiVersion: v1
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: log
+      enabled: true
+      paths:
+        - /messages
+      fields:
+        app: k8s
+        type: module
+    filebeat.config.modules:
+      path: ${path.config}/modules.d/*.yml
+      reload.enabled: false
+    setup.template.settings:
+      index.number_of_shards: 3
+    setup.kibana:
+    output.logstash:
+      hosts: ["logstash-0.logstash.elk:5044"]
+        #hosts: ["18.183.172.231:31059"]
+    processors:
+      - add_host_metadata:
+      - add_cloud_metadata:
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: elk

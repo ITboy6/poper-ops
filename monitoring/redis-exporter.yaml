@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: redis-exporter
+  name: redis-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+    spec:
+      containers:
+      - name: redis-exporter
+        image: oliver006/redis_exporter:latest
+        env:
+        - name: TZ
+          value: "Asia/Shanghai"
+        - name: REDIS_ADDR
+          value: "redis://3.113.9.239:6379"
+        - name: REDIS_PASSWORD
+          value: "Gj9cn321w@4"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        ports:
+        - name: http-metrics
+          containerPort: 9121
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: redis-exporter
+  name: redis-exporter
+  namespace: monitoring
+spec:
+  ports:
+  - name: http-metirc
+    protocol: TCP
+    port: 9121
+    targetPort: 9121
+    nodePort: 31291
+  selector:
+    app: redis-exporter
+  type: NodePort

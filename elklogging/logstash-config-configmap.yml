@@ -1,0 +1,32 @@
+apiVersion: v1
+data:
+  logstash.conf: |
+    input {
+      beats {
+         port => 5044
+         client_inactivity_timeout => 36000
+      }
+    }
+
+    filter {
+     #需要配置否则host是一个json不是文本则无法输出至elasticsearch
+      mutate {
+        rename => { "[host][name]" => "host" }
+      }
+    }
+
+    output {
+               elasticsearch {
+                  hosts => ["http://es-kibana.elk.svc.cluster.local:9200"]
+                  user => "elastic"
+                  password => "Aa123456"
+                  index => "k8s-system-log-%{+YYYY.MM.dd}"
+               }
+              stdout{
+                  codec => rubydebug
+               }
+    }
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: elk
